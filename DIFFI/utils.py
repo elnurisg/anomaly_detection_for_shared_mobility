@@ -13,6 +13,11 @@ import DIFFI.interpretability_module as interp
 
 
 def local_diffi_batch(iforest, X):
+
+    # If X is a Pandas DataFrame, convert it to a NumPy array
+    if isinstance(X, pd.DataFrame):
+        X = X.to_numpy() 
+
     fi = []
     ord_idx = []
     exec_time = []
@@ -134,6 +139,12 @@ def get_fs_dataset(dataset_id, seed):
 
 
 def diffi_ranks(X, n_trees, max_samples, n_iter): # removed y parameter as we do not have the labels
+
+    # If X is a Pandas DataFrame, convert it to a NumPy array
+    if isinstance(X, pd.DataFrame):
+        X = X.to_numpy() 
+
+
     f1_all, fi_diffi_all = [], []
     for k in range(n_iter):
         # ISOLATION FOREST

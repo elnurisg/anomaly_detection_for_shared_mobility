@@ -6,11 +6,7 @@ from DIFFI.sklearn_mod_functions import *
 
 
 def diffi_ib(iforest, X, adjust_iic=True): # "ib" stands for "in-bag"
-   
-    # if X is a numpy array, we convert it to a pandas dataframe
-    if isinstance(X, np.ndarray):
-        X = pd.DataFrame(X)
-    
+       
     # start time
     start = time.time()
     # initialization
@@ -26,10 +22,10 @@ def diffi_ib(iforest, X, adjust_iic=True): # "ib" stands for "in-bag"
         # get in-bag samples indices
         in_bag_sample = list(in_bag_samples[k])
         # get in-bag samples (predicted inliers and predicted outliers)
-        X_ib = X.iloc[in_bag_sample, :] # it was X_ib = X[in_bag_sample,:] but as we are using dataframe, we need to use iloc
+        X_ib = X[in_bag_sample, :] 
         as_ib = decision_function_single_tree(iforest, k, X_ib)
-        X_outliers_ib = X_ib[as_ib < 0]# X_outliers_ib = X_ib[np.where(as_ib < 0)] numpy->pandas
-        X_inliers_ib = X_ib[as_ib > 0] # X_inliers_ib = X_ib[np.where(as_ib > 0)] numpy->pandas
+        X_outliers_ib = X_ib[np.where(as_ib < 0)] 
+        X_inliers_ib = X_ib[np.where(as_ib > 0)]
         if X_inliers_ib.shape[0] == 0 or X_outliers_ib.shape[0] == 0:
             continue
         # compute relevant quantities
