@@ -67,6 +67,45 @@ def logarithmic_scores(fi):
                 scores[curr_feat] += log_s[j]
     return scores 
   
+def plot_feature_ranking(ord_idx, title, sorted_feature_names=None):
+    sns.set(style='darkgrid')
+    
+    num_feats = ord_idx.shape[1]
+    features = np.arange(num_feats)  # Generate feature indices
+    
+    # If no custom sorted feature names are provided, generate default names
+    if sorted_feature_names is None:
+        sorted_feature_names = [f'Feature {i+1}' for i in range(num_feats)]
+    
+    ranks = np.arange(1, num_feats+1)
+    
+    # Count how many times each feature is ranked at each position
+    rank_features = {r: [list(ord_idx[:,r-1]).count(f) for f in features] for r in ranks}
+    
+    # Convert to DataFrame and normalize counts
+    df = pd.DataFrame(rank_features)
+    df_norm = df.transform(lambda x: x / sum(x))
+    
+    # Add sorted feature names for better labeling
+    df_norm['Feature ID'] = features
+    df_norm['Feature'] = df_norm['Feature ID'].map(lambda x: sorted_feature_names[x])  # Use sorted feature names
+    
+    sns.set(style='darkgrid')
+    df_norm.drop(['Feature ID'], inplace=True, axis=1)
+    df_norm.set_index('Feature').T.plot(kind='bar', stacked=True, figsize=(10, 6))  # Increase figure size
+    
+    locs, labels = plt.xticks()
+    x_ticks = [f'{r}$^{{th}}$' for r in ranks]  # Generate ordinal labels
+    plt.xticks(locs, x_ticks, rotation=0)
+    plt.ylim((0, 1.05))
+    
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), title='Features', ncol=1)
+    plt.title(title, y=1.05)  
+    plt.xlabel('Rank')
+    plt.ylabel('Normalized count')
+
+    plt.tight_layout()
+    plt.show()
 
 def plot_ranking_glass(ord_idx, title):
     sns.set(style='darkgrid')
