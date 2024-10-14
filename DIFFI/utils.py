@@ -95,9 +95,14 @@ def plot_feature_ranking(ord_idx, title, sorted_feature_names=None):
     df_norm['Feature ID'] = features
     df_norm['Feature'] = df_norm['Feature ID'].map(lambda x: sorted_feature_names[x])  # Use sorted feature names
     
+    # Define a color palette with distinct colors
+    palette = sns.color_palette("tab20", num_feats)  # You can try "tab20", "Set3", or any custom palette
+    
     sns.set(style='darkgrid')
     df_norm.drop(['Feature ID'], inplace=True, axis=1)
-    df_norm.set_index('Feature').T.plot(kind='bar', stacked=True, figsize=(10, 6))  # Increase figure size
+    
+    # Apply color palette to the plot
+    df_norm.set_index('Feature').T.plot(kind='bar', stacked=True, figsize=(10, 6), color=palette)  
     
     locs, labels = plt.xticks()
     x_ticks = [f'{r}$^{{th}}$' for r in ranks]  # Generate ordinal labels
@@ -111,7 +116,6 @@ def plot_feature_ranking(ord_idx, title, sorted_feature_names=None):
 
     plt.tight_layout()
     plt.show()
-
 
 def plot_new_outliers_syn(X_xaxis, X_yaxis, X_bisec, title):
     sns.set(style='darkgrid')
