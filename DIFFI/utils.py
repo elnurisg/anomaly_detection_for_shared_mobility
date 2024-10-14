@@ -34,6 +34,11 @@ def local_diffi_batch(iforest, X):
 
 
 def local_shap_batch(iforest, X):
+
+    # If X is a Pandas DataFrame, convert it to a NumPy array
+    if isinstance(X, pd.DataFrame):
+        X = X.to_numpy() 
+
     fi = []
     ord_idx = []
     exec_time = []
