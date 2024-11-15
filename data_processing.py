@@ -6,12 +6,17 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from meteostat import Point, Hourly
 from datetime import datetime
+from shapely.geometry import Point as GeoPoint
+import geopandas as gpd
+import partridge as pt
+
 
 # Select relevant features
 features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'temp', 'wspd', 'prcp', 'coco', 
                     'start_hour', 'start_dayofweek', 'start_month', 
-                    'end_hour', 'end_dayofweek', 'end_month']
+                    'end_hour', 'end_dayofweek', 'end_month',
+                    'start_station_nearby_stations', 'end_station_nearby_stations']
 
 def process_data(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
     bike_weather_data = read_and_connect_data(city_name, start, end)
@@ -35,6 +40,8 @@ def read_and_connect_data(city_name, start, end):
     weather_data_hourly['time'] = pd.to_datetime(weather_data_hourly['time'])
 
     bike_weather_data = pd.merge_asof(bike_data, weather_data_hourly, left_on='starttime', right_on='time', direction='nearest')
+
+    add_mass_transit_data(bike_weather_data)
 
     return bike_weather_data
 
@@ -96,3 +103,78 @@ def apply_pca(bike_weather_data, n_components=5):
     bike_weather_data = pca.fit_transform(bike_weather_data)
 
     return bike_weather_data
+
+
+                            ### Mass Transit Data
+
+def load_stops_data():
+    """Load and prepare stops data as a GeoDataFrame."""
+    feed = pt.load_feed("gtfs")
+    stops = feed.stops
+    stops['geometry'] = stops.apply(lambda x: GeoPoint(x['stop_lon'], x['stop_lat']), axis=1)
+    stops_gdf = gpd.GeoDataFrame(stops[['stop_id', 'geometry']], geometry='geometry')
+    stops_gdf.set_crs(epsg=4326, inplace=True)
+    stops_gdf = stops_gdf.to_crs(epsg=3857)
+    
+    return stops_gdf
+
+
+def prepare_bike_data(bike_weather_data):
+    """Prepare bike data with geometry columns and convert to a GeoDataFrame."""
+    bike_weather_data['start_geometry'] = bike_weather_data.apply(
+        lambda x: GeoPoint(x['start station longitude'], x['start station latitude']), axis=1
+    )
+    bike_weather_data['end_geometry'] = bike_weather_data.apply(
+        lambda x: GeoPoint(x['end station longitude'], x['end station latitude']), axis=1
+    )
+    bike_gdf = gpd.GeoDataFrame(bike_weather_data, geometry='start_geometry')
+    
+    return bike_gdf
+
+
+def calculate_nearby_stops(bike_gdf, stops_gdf, radius, geometry_column):
+    """Calculate the number of nearby transit stops for the given geometry column."""
+    bike_gdf.set_geometry(geometry_column, inplace=True)
+    bike_gdf = bike_gdf.set_crs(epsg=4326, inplace=True).to_crs(epsg=3857)
+    bike_gdf['buffer'] = bike_gdf.geometry.buffer(radius)
+    nearby_stops = gpd.sjoin(stops_gdf, bike_gdf.set_geometry('buffer'), how='inner', predicate='within')
+    nearby_counts = nearby_stops.groupby('index_right').size()
+    
+    return nearby_counts
+
+
+def add_nearby_stops_counts(bike_weather_data, start_counts, end_counts):
+    """Add nearby stops counts to bike_weather_data and encode them."""
+    bike_weather_data['start_nearby_transit_stops'] = bike_weather_data.index.map(start_counts).fillna(0).astype(int)
+    bike_weather_data['end_nearby_transit_stops'] = bike_weather_data.index.map(end_counts).fillna(0).astype(int)
+    
+    # Apply encoding
+    bike_weather_data['start_nearby_transit_stops'] = bike_weather_data['start_nearby_transit_stops'].apply(encode_nearby_stops)
+    bike_weather_data['end_nearby_transit_stops'] = bike_weather_data['end_nearby_transit_stops'].apply(encode_nearby_stops)
+    
+    return bike_weather_data
+
+
+def add_mass_transit_data(bike_weather_data, radius=500):
+    """Main function to add mass transit data to bike_weather_data."""
+    stops_gdf = load_stops_data()
+    bike_gdf = prepare_bike_data(bike_weather_data)
+    
+    # Calculate nearby stops for start and end stations
+    start_counts = calculate_nearby_stops(bike_gdf, stops_gdf, radius, 'start_geometry')
+    end_counts = calculate_nearby_stops(bike_gdf, stops_gdf, radius, 'end_geometry')
+    
+    # Add counts and encode them
+    bike_weather_data = add_nearby_stops_counts(bike_weather_data, start_counts, end_counts)
+    
+    return bike_weather_data
+
+
+def encode_nearby_stops(count):
+    if count <= 5:
+        return 0  # 0 = Badly Connected
+    elif 6 <= count <= 15:
+        return 1  # 1 = Moderately Connected
+    else:
+        return 2  # 2 = Well Connected
+
