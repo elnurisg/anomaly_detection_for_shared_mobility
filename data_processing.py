@@ -16,7 +16,7 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'temp', 'wspd', 'prcp', 'coco', 
                     'start_hour', 'start_dayofweek', 'start_month', 
                     'end_hour', 'end_dayofweek', 'end_month',
-                    'start_station_nearby_stations', 'end_station_nearby_stations']
+                    'start_nearby_transit_stops', 'end_nearby_transit_stops']
 
 def process_data(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
     bike_weather_data = read_and_connect_data(city_name, start, end)
@@ -104,6 +104,17 @@ def apply_pca(bike_weather_data, n_components=5):
 
     return bike_weather_data
 
+def categorize_tripduration(bike_weather_data):
+    bike_weather_data['tripduration_type'] = np.where(
+        bike_weather_data['tripduration'] < 900, 0,  # "very_short_trip"
+        np.where(
+            (bike_weather_data['tripduration'] >= 900) & (bike_weather_data['tripduration'] < 3600), 1,  # "short_trip"
+            np.where(
+                (bike_weather_data['tripduration'] >= 3600) & (bike_weather_data['tripduration'] <= 6 * 3600), 2,  # "long_trip"
+                3  # "very_long_trip"
+            )
+        )
+    )
 
                             ### Mass Transit Data
 
