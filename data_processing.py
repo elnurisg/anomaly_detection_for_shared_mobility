@@ -9,6 +9,7 @@ from datetime import datetime
 from shapely.geometry import Point as GeoPoint
 import geopandas as gpd
 import partridge as pt
+import holidays
 
 
 # Select relevant features
@@ -16,6 +17,7 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'temp', 'wspd', 'prcp', 'coco', 
                     'start_hour', 'start_dayofweek', 'start_month', 
                     'end_hour', 'end_dayofweek', 'end_month',
+                    'special_day',
                     'start_nearby_transit_stops', 'end_nearby_transit_stops']
 
 def process_data(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
@@ -38,10 +40,11 @@ def read_and_connect_data(city_name, start, end):
     # Ensure both are in datetime format
     bike_data['starttime'] = pd.to_datetime(bike_data['starttime'])
     weather_data_hourly['time'] = pd.to_datetime(weather_data_hourly['time'])
-
+   
     bike_weather_data = pd.merge_asof(bike_data, weather_data_hourly, left_on='starttime', right_on='time', direction='nearest')
 
-    add_mass_transit_data(bike_weather_data)
+    bike_weather_data = add_holidays_to_data(bike_weather_data)
+    # bike_weather_data = add_mass_transit_data(bike_weather_data)
 
     return bike_weather_data
 
@@ -189,3 +192,30 @@ def encode_nearby_stops(count):
     else:
         return 2  # 2 = Well Connected
 
+
+# Add holidays to the data
+
+def add_holidays_to_data(bike_weather_data, start_date="2023-01-01", end_date="2023-01-31"):
+
+    # Generate US holidays for 2023
+    us_holidays = holidays.US(years=2023)
+    date_range = pd.date_range(start=start_date, end=end_date)
+
+    # Create a DataFrame with dates and corresponding holiday names
+    special_days = [us_holidays.get(date, None) for date in date_range]
+
+    df_special_days = pd.DataFrame({
+        'date': pd.to_datetime(date_range).normalize,  # Normalize to ensure datetime64[ns] type
+        'special_day': special_days
+    })
+
+    # Convert 'starttime' to date
+    bike_weather_data['date'] = pd.to_datetime(bike_weather_data['starttime']).dt
+
+    # Merge the dataframes
+    bike_weather_data = bike_weather_data.merge(df_special_days, how='left', on='date')
+
+    # Drop the 'date' column as it's no longer needed
+    bike_weather_data.drop(columns=['date'], inplace=True)
+
+    return bike_weather_data
