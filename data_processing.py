@@ -44,7 +44,7 @@ def read_and_connect_data(city_name, start, end):
     bike_weather_data = pd.merge_asof(bike_data, weather_data_hourly, left_on='starttime', right_on='time', direction='nearest')
 
     bike_weather_data = add_holidays_to_data(bike_weather_data)
-    # bike_weather_data = add_mass_transit_data(bike_weather_data)
+    bike_weather_data = add_mass_transit_data(bike_weather_data)
 
     return bike_weather_data
 
@@ -205,12 +205,12 @@ def add_holidays_to_data(bike_weather_data, start_date="2023-01-01", end_date="2
     special_days = [us_holidays.get(date, None) for date in date_range]
 
     df_special_days = pd.DataFrame({
-        'date': pd.to_datetime(date_range).normalize,  # Normalize to ensure datetime64[ns] type
+        'date': date_range.date,  # Normalize to ensure datetime64[ns] type
         'special_day': special_days
     })
 
     # Convert 'starttime' to date
-    bike_weather_data['date'] = pd.to_datetime(bike_weather_data['starttime']).dt
+    bike_weather_data['date'] = pd.to_datetime(bike_weather_data['starttime']).dt.date
 
     # Merge the dataframes
     bike_weather_data = bike_weather_data.merge(df_special_days, how='left', on='date')
