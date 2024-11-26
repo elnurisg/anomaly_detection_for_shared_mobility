@@ -10,6 +10,7 @@ from shapely.geometry import Point as GeoPoint
 import geopandas as gpd
 import partridge as pt
 import holidays
+# from shapely.ops import nearest_points
 
 
 # Select relevant features
@@ -49,7 +50,7 @@ def read_and_connect_data(city_name, start, end):
     bike_weather_data = add_holidays_to_data(bike_weather_data)
     bike_weather_data = add_mass_transit_data(bike_weather_data)
 
-    neighborhoods = gpd.read_file('boston_neighborhood_boundaries_approximated_by_2020_census_block_groups.geojson')
+    neighborhoods = gpd.read_file('boston_cambridge_neighborhoods.geojson')
     bike_weather_data = add_neighborhoods(bike_weather_data, neighborhoods)
 
     return bike_weather_data
@@ -238,14 +239,61 @@ def add_neighborhoods(bike_weather_data, neighborhoods):
 
     # Spatial join for start neighborhoods
     bike_gdf = gpd.sjoin(bike_gdf, neighborhoods, how='left', predicate='intersects', rsuffix='_start')
-    bike_gdf = bike_gdf.rename(columns={'blockgr2020_ctr_neighb_name': 'start_neighborhood'})
 
     # Spatial join for end neighborhoods
     bike_gdf.set_geometry('end_geometry', inplace=True)
     bike_gdf = gpd.sjoin(bike_gdf, neighborhoods, how='left', predicate='intersects', rsuffix='_end')
-    bike_gdf = bike_gdf.rename(columns={'blockgr2020_ctr_neighb_name': 'end_neighborhood'})
+    
+    bike_gdf = bike_gdf.rename(columns={'neighborhood_left': 'start_neighborhood'})
+    bike_gdf = bike_gdf.rename(columns={'neighborhood__end': 'end_neighborhood'})
+
+# # Classify NaN values in 'start_neighborhood'
+#     missing_start = bike_gdf.loc[bike_gdf['start_neighborhood'].isna()]
+#     bike_gdf.loc[bike_gdf['start_neighborhood'].isna(), 'start_neighborhood'] = missing_start['start_geometry'].apply(
+#         lambda point: classify_out_of_area(point, neighborhoods)
+#     )
+
+#     # Classify NaN values in 'end_neighborhood'
+#     missing_end = bike_gdf.loc[bike_gdf['end_neighborhood'].isna()]
+#     bike_gdf.loc[bike_gdf['end_neighborhood'].isna(), 'end_neighborhood'] = missing_end['end_geometry'].apply(
+#         lambda point: classify_out_of_area(point, neighborhoods)
+#     )
 
     # Clean up unnecessary columns and reset geometry
     bike_gdf = bike_gdf.drop(columns=['geometry'], errors='ignore')
 
     return bike_gdf
+
+def combine_and_save_neighborhoods(boston_neigh = 'bpda_neighborhood_boundaries.geojson', cambridge_neigh = 'BOUNDARY_CDDNeighborhoods/BOUNDARY_CDDNeighborhoods.shp'): 
+    # Load Boston neighborhoods GeoJSON
+    boston_neighborhoods = gpd.read_file(boston_neigh)
+
+    # Load Cambridge neighborhoods shapefile
+    cambridge_neighborhoods = gpd.read_file(cambridge_neigh)
+
+    # Ensure both GeoDataFrames have the same coordinate reference system (CRS)
+    if boston_neighborhoods.crs != cambridge_neighborhoods.crs:
+        cambridge_neighborhoods = cambridge_neighborhoods.to_crs(boston_neighborhoods.crs)
+
+    # Standardize the column name for Boston and Cambridge neighborhoods
+    boston_neighborhoods = boston_neighborhoods.rename(columns={'name': 'neighborhood'})
+    cambridge_neighborhoods = cambridge_neighborhoods.rename(columns={'NAME': 'neighborhood'})
+
+    # Concatenate the GeoDataFrames after standardizing column names
+    combined_neighborhoods = gpd.GeoDataFrame(pd.concat([boston_neighborhoods, cambridge_neighborhoods], ignore_index=True))
+
+    # Save the combined data for future use
+    combined_neighborhoods.to_file('boston_cambridge_neighborhoods.geojson', driver='GeoJSON')
+
+# def classify_out_of_area(point, polygons):
+#     """
+#     Classify points as 'out_of_area_nearby' or 'out_of_area_far' based on proximity to the nearest polygon.
+#     """
+#     if point.is_empty:  # Ensure no empty geometries
+#         return None
+#     nearest_polygon = nearest_points(point, polygons.unary_union)[1]
+#     distance = point.distance(nearest_polygon)
+#     if distance < 2000:  # Distance in meters (adjust threshold as needed)
+#         return "out_of_area_nearby"
+#     else:
+#         return "out_of_area_far"
