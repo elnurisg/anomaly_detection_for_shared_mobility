@@ -10,6 +10,7 @@ from shapely.geometry import Point as GeoPoint
 import geopandas as gpd
 import partridge as pt
 import holidays
+from shapely.geometry import LineString
 
 
 # Select relevant features
@@ -20,6 +21,7 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'special_day',
                     'start_nearby_transit_stops', 'end_nearby_transit_stops',
                     'start_neighborhood', 'end_neighborhood',
+                    'route_area', 'route',
                     'start_geometry', 'end_geometry']
 
 def process_data(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
@@ -63,6 +65,8 @@ def feature_engineering(bike_weather_data):
 
     bike_weather_data = user_type_feature_encoding(bike_weather_data)
 
+    bike_weather_data = create_route_feature(bike_weather_data)
+    
     bike_weather_data = bike_weather_data[features]
 
     return bike_weather_data
@@ -330,3 +334,38 @@ def meters_to_degrees(threshold_meters, latitude):
     degrees_lon = threshold_meters / (111320 * np.cos(np.radians(latitude)))
 
     return degrees_lat, degrees_lon
+
+def classify_route_area(row):
+    """
+    Classify a route as 'in_area', 'near_out_of_area', or 'far_out_of_area'
+    based on start and end neighborhoods.
+    """
+    if 'out_of_area_far' in [row['start_neighborhood'], row['end_neighborhood']]:
+        return 'far_out_of_area'
+    elif 'out_of_area_nearby' in [row['start_neighborhood'], row['end_neighborhood']]:
+        return 'near_out_of_area'
+    else:
+        return 'in_area'
+
+def create_route_feature(bike_weather_data):
+    """
+    Create the 'route_area' feature and corresponding LineString geometries for routes.
+
+    Parameters:
+        bike_weather_data (pd.DataFrame): DataFrame containing bike trip data
+            with 'start_geometry' and 'end_geometry' columns.
+
+    Returns:
+        gpd.GeoDataFrame: Updated GeoDataFrame with 'route_area' and 'route' features.
+    """
+    # Create LineString geometries for each route
+    bike_weather_data['route'] = bike_weather_data.apply(
+        lambda row: LineString([row['start_geometry'], row['end_geometry']]) 
+        if row['start_geometry'] and row['end_geometry'] else None,
+        axis=1
+    )
+
+    # Classify each route into 'in_area', 'near_out_of_area', or 'far_out_of_area'
+    bike_weather_data['route_area'] = bike_weather_data.apply(classify_route_area, axis=1)
+
+    return bike_weather_data
