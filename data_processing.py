@@ -10,7 +10,6 @@ from shapely.geometry import Point as GeoPoint
 import geopandas as gpd
 import partridge as pt
 import holidays
-# from shapely.ops import nearest_points
 
 
 # Select relevant features
@@ -230,39 +229,6 @@ def add_holidays_to_data(bike_weather_data, start_date="2023-01-01", end_date="2
 
                         ### Neighborhoods
 
-def add_neighborhoods(bike_weather_data, neighborhoods):
-
-    bike_gdf = prepare_bike_data(bike_weather_data)
-
-    # Ensure CRS compatibility
-    neighborhoods = neighborhoods.to_crs(bike_gdf.crs)
-
-    # Spatial join for start neighborhoods
-    bike_gdf = gpd.sjoin(bike_gdf, neighborhoods, how='left', predicate='intersects', rsuffix='_start')
-
-    # Spatial join for end neighborhoods
-    bike_gdf.set_geometry('end_geometry', inplace=True)
-    bike_gdf = gpd.sjoin(bike_gdf, neighborhoods, how='left', predicate='intersects', rsuffix='_end')
-    
-    bike_gdf = bike_gdf.rename(columns={'neighborhood_left': 'start_neighborhood'})
-    bike_gdf = bike_gdf.rename(columns={'neighborhood__end': 'end_neighborhood'})
-
-# # Classify NaN values in 'start_neighborhood'
-#     missing_start = bike_gdf.loc[bike_gdf['start_neighborhood'].isna()]
-#     bike_gdf.loc[bike_gdf['start_neighborhood'].isna(), 'start_neighborhood'] = missing_start['start_geometry'].apply(
-#         lambda point: classify_out_of_area(point, neighborhoods)
-#     )
-
-#     # Classify NaN values in 'end_neighborhood'
-#     missing_end = bike_gdf.loc[bike_gdf['end_neighborhood'].isna()]
-#     bike_gdf.loc[bike_gdf['end_neighborhood'].isna(), 'end_neighborhood'] = missing_end['end_geometry'].apply(
-#         lambda point: classify_out_of_area(point, neighborhoods)
-#     )
-
-    # Clean up unnecessary columns and reset geometry
-    bike_gdf = bike_gdf.drop(columns=['geometry'], errors='ignore')
-
-    return bike_gdf
 
 def combine_and_save_neighborhoods(boston_neigh = 'bpda_neighborhood_boundaries.geojson', cambridge_neigh = 'BOUNDARY_CDDNeighborhoods/BOUNDARY_CDDNeighborhoods.shp'): 
     # Load Boston neighborhoods GeoJSON
@@ -285,15 +251,82 @@ def combine_and_save_neighborhoods(boston_neigh = 'bpda_neighborhood_boundaries.
     # Save the combined data for future use
     combined_neighborhoods.to_file('boston_cambridge_neighborhoods.geojson', driver='GeoJSON')
 
-# def classify_out_of_area(point, polygons):
-#     """
-#     Classify points as 'out_of_area_nearby' or 'out_of_area_far' based on proximity to the nearest polygon.
-#     """
-#     if point.is_empty:  # Ensure no empty geometries
-#         return None
-#     nearest_polygon = nearest_points(point, polygons.unary_union)[1]
-#     distance = point.distance(nearest_polygon)
-#     if distance < 2000:  # Distance in meters (adjust threshold as needed)
-#         return "out_of_area_nearby"
-#     else:
-#         return "out_of_area_far"
+def classify_out_of_area(points, polygons, threshold_meters=2500):
+    """
+    Classify points as 'out_of_area_nearby' or 'out_of_area_far' based on the nearest polygon and a threshold.
+    """
+    results = []
+    for point in points:
+        if not isinstance(point, GeoPoint):  # Ensure valid geometry
+            results.append(None)
+            continue
+
+        # Convert threshold from meters to degrees
+        latitude = point.y
+        degrees_lat, degrees_lon = meters_to_degrees(threshold_meters, latitude)
+
+        # Calculate minimum distance to all polygons
+        distances = [point.distance(poly) for poly in polygons]
+        min_distance = min(distances)
+
+        # Classify based on the threshold in degrees
+        if min_distance < degrees_lat:  # Only using latitude for simplicity
+            results.append("out_of_area_nearby")
+        else:
+            results.append("out_of_area_far")
+
+    return results
+
+
+def add_neighborhoods(bike_weather_data, neighborhoods, threshold_meters=2500):
+    """
+    Adds start and end neighborhood information to the bike_weather_data,
+    and classifies out-of-area points as 'nearby' or 'far'.
+    """
+    # Prepare bike data as a GeoDataFrame
+    bike_gdf = prepare_bike_data(bike_weather_data)
+
+    # Ensure CRS compatibility between bike data and neighborhoods
+    neighborhoods = neighborhoods.to_crs(bike_gdf.crs)
+
+    # Spatial join for start neighborhoods
+    bike_gdf = gpd.sjoin(bike_gdf, neighborhoods, how='left', predicate='intersects', rsuffix='_start')
+
+    # Spatial join for end neighborhoods
+    bike_gdf.set_geometry('end_geometry', inplace=True)
+    bike_gdf = gpd.sjoin(bike_gdf, neighborhoods, how='left', predicate='intersects', rsuffix='_end')
+
+    bike_gdf = bike_gdf.rename(columns={'neighborhood_left': 'start_neighborhood'})
+    bike_gdf = bike_gdf.rename(columns={'neighborhood__end': 'end_neighborhood'})
+
+    # Convert neighborhoods' geometry to a list for distance calculation
+    polygons = neighborhoods.geometry.tolist()
+
+    # Classify 'out_of_area' points for start_neighborhood
+    missing_start = bike_gdf[bike_gdf['start_neighborhood'].isna()]
+    bike_gdf.loc[missing_start.index, 'start_neighborhood'] = classify_out_of_area(
+        missing_start['start_geometry'], polygons, threshold_meters
+    )
+
+    # Classify 'out_of_area' points for end_neighborhood
+    missing_end = bike_gdf[bike_gdf['end_neighborhood'].isna()]
+    bike_gdf.loc[missing_end.index, 'end_neighborhood'] = classify_out_of_area(
+        missing_end['end_geometry'], polygons, threshold_meters
+    )
+
+    # Clean up: drop unnecessary column
+    bike_gdf = bike_gdf.drop(columns=['geometry'], errors='ignore')
+
+    return bike_gdf
+
+def meters_to_degrees(threshold_meters, latitude):
+    """
+    Convert distance from meters to degrees at a given latitude.
+    """
+    # Convert threshold in meters to degrees for latitude
+    degrees_lat = threshold_meters / 111320
+
+    # Convert threshold in meters to degrees for longitude
+    degrees_lon = threshold_meters / (111320 * np.cos(np.radians(latitude)))
+
+    return degrees_lat, degrees_lon
