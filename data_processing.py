@@ -22,7 +22,8 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'start_nearby_transit_stops', 'end_nearby_transit_stops',
                     'start_neighborhood', 'end_neighborhood',
                     'route_area', 'route',
-                    'start_geometry', 'end_geometry']
+                    'start_geometry', 'end_geometry',
+                    'start station id', 'end station id']
 
 def process_data(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
     bike_weather_data = read_and_connect_data(city_name, start, end)
@@ -66,7 +67,14 @@ def feature_engineering(bike_weather_data):
     bike_weather_data = user_type_feature_encoding(bike_weather_data)
 
     bike_weather_data = create_route_feature(bike_weather_data)
-    
+
+    # encode route_area
+    bike_weather_data = encode_label(bike_weather_data, 'route_area')
+
+    #encode neighbiorhoods
+    bike_weather_data = encode_label(bike_weather_data, 'start_neighborhood')
+    bike_weather_data = encode_label(bike_weather_data, 'end_neighborhood')
+
     bike_weather_data = bike_weather_data[features]
 
     return bike_weather_data
@@ -369,3 +377,8 @@ def create_route_feature(bike_weather_data):
     bike_weather_data['route_area'] = bike_weather_data.apply(classify_route_area, axis=1)
 
     return bike_weather_data
+
+def encode_label(df, column):
+    encoder = LabelEncoder()
+    df[column] = encoder.fit_transform(df[column])
+    return df
