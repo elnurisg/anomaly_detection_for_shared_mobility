@@ -30,13 +30,13 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
 MAX_TRIPDURATION = 86400  # 1 day in seconds
 MAX_DISTANCE = 100  # 100 km
 
-def prepare_station_data():
+def prepare_station_data(file_path):
     """
     Splits the input data into start and end datasets, renames columns for consistency,
     and adds an is_start flag.
     """
     # Start dataset
-    data = gpd.read_parquet("data/boston/bike_trip_focused_data.parquet")
+    data = gpd.read_parquet(file_path)
 
     start_data = data[[
         'start station id', 'start station name', 'start_neighborhood', 'start_hour',
@@ -134,12 +134,12 @@ def add_station_metadata(aggregated_data, original_data):
     return aggregated_data.merge(metadata, on='station_id', how='left')
 
 
-def from_trip_to_station_focused():
+def from_trip_to_station_focused(file_path):
     """
     High-level function to process trip data and generate station-time-focused metrics.
     """
     # Step 1: Read, Prepare start and end datasets
-    station_data = prepare_station_data()
+    station_data = prepare_station_data(file_path)
 
     # Step 2: Filter outliers
     station_data = filter_outliers(station_data)
