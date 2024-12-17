@@ -26,6 +26,133 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'start station id', 'end station id',
                     'start station name', 'end station name']
 
+# Outlier thresholds
+MAX_TRIPDURATION = 86400  # 1 day in seconds
+MAX_DISTANCE = 100  # 100 km
+
+def prepare_station_data():
+    """
+    Splits the input data into start and end datasets, renames columns for consistency,
+    and adds an is_start flag.
+    """
+    # Start dataset
+    data = gpd.read_parquet("data/bike_trip_focused_data.parquet")
+
+    start_data = data[[
+        'start station id', 'start station name', 'start_neighborhood', 'start_hour',
+        'start_dayofweek', 'start_month', 'special_day', 'tripduration', 'distance',
+        'speed', 'user_type_encoded', 'temp', 'prcp', 'wspd', 'coco',
+        'start_nearby_transit_stops', 'start_geometry'
+    ]].copy()
+
+    start_data.rename(columns={
+        'start station id': 'station_id',
+        'start station name': 'station_name',
+        'start_neighborhood': 'neighborhood',
+        'start_hour': 'hour',
+        'start_dayofweek': 'dayofweek',
+        'start_month': 'month',
+        'start_nearby_transit_stops': 'nearby_transit_stops',
+        'start_geometry': 'geometry'
+    }, inplace=True)
+    start_data['is_start'] = 1
+
+    # End dataset
+    end_data = data[[
+        'end station id', 'end station name', 'end_neighborhood', 'end_hour',
+        'end_dayofweek', 'end_month', 'special_day', 'tripduration', 'distance',
+        'speed', 'user_type_encoded', 'temp', 'prcp', 'wspd', 'coco',
+        'end_nearby_transit_stops', 'end_geometry'
+    ]].copy()
+
+    end_data.rename(columns={
+        'end station id': 'station_id',
+        'end station name': 'station_name',
+        'end_neighborhood': 'neighborhood',
+        'end_hour': 'hour',
+        'end_dayofweek': 'dayofweek',
+        'end_month': 'month',
+        'end_nearby_transit_stops': 'nearby_transit_stops',
+        'end_geometry': 'geometry'
+    }, inplace=True)
+    end_data['is_start'] = 0
+
+    # Combine datasets
+    combined_data = pd.concat([start_data, end_data], ignore_index=True)
+    return combined_data
+
+
+def filter_outliers(data, max_tripduration=MAX_TRIPDURATION, max_distance=MAX_DISTANCE):
+    """
+    Filters out extreme outliers based on tripduration and distance.
+    """
+    return data[
+        (data['tripduration'] <= max_tripduration) &
+        (data['distance'] <= max_distance)
+    ]
+
+
+def aggregate_station_time_metrics(data):
+    """
+    Groups the data by station_id, hour, dayofweek, month, and is_start,
+    and computes aggregated metrics.
+    """
+    agg_functions = {
+        'tripduration': ['count', 'mean', 'std', 'median'],
+        'distance': ['mean', 'std', 'median'],
+        'speed': ['mean', 'std', 'median'],
+        'user_type_encoded': 'mean',
+        'temp': 'mean',
+        'prcp': 'mean',
+        'wspd': 'mean',
+        'coco': 'mean',
+        'nearby_transit_stops': 'mean'
+    }
+    aggregated = data.groupby(
+        ['station_id', 'hour', 'dayofweek', 'month', 'is_start']
+    ).agg(agg_functions).reset_index()
+
+    # Flatten column names
+    aggregated.columns = [
+        '_'.join(col).strip('_') if isinstance(col, tuple) else col
+        for col in aggregated.columns
+    ]
+
+    # Replace NaN std with 0
+    std_columns = [col for col in aggregated.columns if '_std' in col]
+    aggregated[std_columns] = aggregated[std_columns].fillna(0)
+
+    return aggregated
+
+
+def add_station_metadata(aggregated_data, original_data):
+    """
+    Adds station metadata (station_name, neighborhood, geometry) to the aggregated data.
+    """
+    metadata_columns = ['station_id', 'station_name', 'neighborhood', 'geometry']
+    metadata = original_data[metadata_columns].drop_duplicates(subset=['station_id'])
+    return aggregated_data.merge(metadata, on='station_id', how='left')
+
+
+def from_trip_to_station_focused():
+    """
+    High-level function to process trip data and generate station-time-focused metrics.
+    """
+    # Step 1: Read, Prepare start and end datasets
+    station_data = prepare_station_data()
+
+    # Step 2: Filter outliers
+    station_data = filter_outliers(station_data)
+
+    # Step 3: Aggregate metrics
+    aggregated_data = aggregate_station_time_metrics(station_data)
+
+    # Step 4: Add station metadata
+    final_data = add_station_metadata(aggregated_data, station_data)
+
+    return final_data
+
+
 def bike_trip_process_data_and_save(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
     bike_weather_data = bike_trip_read_and_connect_data(city_name, start, end)
     bike_weather_data = bike_trip_feature_engineering(bike_weather_data)
