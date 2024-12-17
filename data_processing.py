@@ -23,18 +23,21 @@ features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'start_neighborhood', 'end_neighborhood',
                     'route_area', 'route',
                     'start_geometry', 'end_geometry',
-                    'start station id', 'end station id']
+                    'start station id', 'end station id',
+                    'start station name', 'end station name']
 
-def process_data(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
-    bike_weather_data = read_and_connect_data(city_name, start, end)
-    bike_weather_data = feature_engineering(bike_weather_data)
+def bike_trip_process_data_and_save(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
+    bike_weather_data = bike_trip_read_and_connect_data(city_name, start, end)
+    bike_weather_data = bike_trip_feature_engineering(bike_weather_data)
 
     if scaling:   bike_weather_data = scale_data(bike_weather_data)
     if pca:       bike_weather_data = apply_pca(bike_weather_data)
+    bike_weather_data.to_parquet("data/bike_trip_focused_data.parquet")
 
+    print("bike trip focused data saved successfully as Parquet!")
     return bike_weather_data
 
-def read_and_connect_data(city_name, start, end):
+def bike_trip_read_and_connect_data(city_name, start, end):
     # Load bike data
     if city_name == 'boston':
         bike_data = pd.read_csv('data/boston/202301-bluebikes-tripdata.csv')
@@ -57,7 +60,7 @@ def read_and_connect_data(city_name, start, end):
 
     return bike_weather_data
 
-def feature_engineering(bike_weather_data):
+def bike_trip_feature_engineering(bike_weather_data):
     bike_weather_data = distance_feature(bike_weather_data)
 
     bike_weather_data = date_related_features(bike_weather_data)
