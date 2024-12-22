@@ -92,10 +92,19 @@ def filter_outliers(data, max_tripduration=MAX_TRIPDURATION, max_distance=MAX_DI
     ]
 
 
+def extract_station_metadata(data):
+    """
+    Extracts station-specific metadata, ensuring nearby_transit_stops is constant per station.
+    """
+    station_metadata = data[['station_id', 'station_name', 'neighborhood', 'geometry', 'nearby_transit_stops']] \
+                        .drop_duplicates(subset=['station_id'])
+    return station_metadata
+
+
 def aggregate_station_time_metrics(data):
     """
     Groups the data by station_id, hour, dayofweek, month, and is_start,
-    and computes aggregated metrics.
+    and computes aggregated metrics (excluding station-specific columns).
     """
     agg_functions = {
         'tripduration': ['count', 'mean', 'std', 'median'],
@@ -105,9 +114,9 @@ def aggregate_station_time_metrics(data):
         'temp': 'mean',
         'prcp': 'mean',
         'wspd': 'mean',
-        'coco': 'mean',
-        'nearby_transit_stops': 'mean'
+        'coco': 'mean'
     }
+
     aggregated = data.groupby(
         ['station_id', 'hour', 'dayofweek', 'month', 'is_start']
     ).agg(agg_functions).reset_index()
@@ -121,37 +130,32 @@ def aggregate_station_time_metrics(data):
     # Replace NaN std with 0
     std_columns = [col for col in aggregated.columns if '_std' in col]
     aggregated[std_columns] = aggregated[std_columns].fillna(0)
+    aggregated.rename(columns={'tripduration_count': 'count'}, inplace=True)
 
     return aggregated
-
-
-def add_station_metadata(aggregated_data, original_data):
-    """
-    Adds station metadata (station_name, neighborhood, geometry) to the aggregated data.
-    """
-    metadata_columns = ['station_id', 'station_name', 'neighborhood', 'geometry']
-    metadata = original_data[metadata_columns].drop_duplicates(subset=['station_id'])
-    return aggregated_data.merge(metadata, on='station_id', how='left')
 
 
 def from_trip_to_station_focused(file_path):
     """
     High-level function to process trip data and generate station-time-focused metrics.
+    Ensures station-specific features remain consistent.
     """
-    # Step 1: Read, Prepare start and end datasets
+    # Step 1: Prepare start and end datasets
     station_data = prepare_station_data(file_path)
 
-    # Step 2: Filter outliers
+    # Step 2: Extract station-specific metadata
+    station_metadata = extract_station_metadata(station_data)
+
+    # Step 3: Filter outliers
     station_data = filter_outliers(station_data)
 
-    # Step 3: Aggregate metrics
+    # Step 4: Aggregate metrics (excluding station-specific features)
     aggregated_data = aggregate_station_time_metrics(station_data)
 
-    # Step 4: Add station metadata
-    final_data = add_station_metadata(aggregated_data, station_data)
+    # Step 5: Merge station-specific metadata
+    final_data = aggregated_data.merge(station_metadata, on='station_id', how='left')
 
     return final_data
-
 
 def bike_trip_process_data_and_save(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
     bike_weather_data = bike_trip_read_and_connect_data(city_name, start, end)
