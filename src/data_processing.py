@@ -100,10 +100,14 @@ def filter_outliers(data, max_tripduration=MAX_TRIPDURATION, max_distance=MAX_DI
 
 def extract_station_metadata(data):
     """
-    Extracts station-specific metadata, ensuring nearby_transit_stops is constant per station.
+    Extracts station-specific metadata, ensuring alignment with the grouped data.
+    Includes time-dependent features like day, month, and is_start.
     """
-    station_metadata = data[['station_id', 'station_name', 'neighborhood', 'geometry', 'nearby_transit_stops', 'dayofweek', 'is_weekend', 'special_day']] \
-                        .drop_duplicates(subset=['station_id'])
+    station_metadata = data[[
+        'station_id', 'hour', 'day', 'month', 'is_start',  # Include grouping keys
+        'station_name', 'neighborhood', 'geometry', 
+        'nearby_transit_stops', 'dayofweek', 'is_weekend', 'special_day'
+    ]].drop_duplicates(subset=['station_id', 'hour', 'day', 'month', 'is_start'])
     return station_metadata
 
 
@@ -159,8 +163,11 @@ def from_trip_to_station_focused(file_path):
     aggregated_data = aggregate_station_time_metrics(station_data)
 
     # Step 5: Merge station-specific metadata
-    final_data = aggregated_data.merge(station_metadata, on='station_id', how='left')
-
+    final_data = aggregated_data.merge(
+        station_metadata,
+        on=['station_id', 'hour', 'day', 'month', 'is_start'],  # Match aggregation keys
+        how='left'
+        )
     return final_data
 
 def bike_trip_process_data_and_save(city_name = 'boston', start = datetime(2023, 1, 1), end = datetime(2023, 1, 31), pca=True, scaling=False):
