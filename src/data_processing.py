@@ -102,7 +102,7 @@ def extract_station_metadata(data):
     """
     Extracts station-specific metadata, ensuring nearby_transit_stops is constant per station.
     """
-    station_metadata = data[['station_id', 'station_name', 'neighborhood', 'geometry', 'nearby_transit_stops', 'dayofweek', 'is_weekend']] \
+    station_metadata = data[['station_id', 'station_name', 'neighborhood', 'geometry', 'nearby_transit_stops', 'dayofweek', 'is_weekend', 'special_day']] \
                         .drop_duplicates(subset=['station_id'])
     return station_metadata
 
