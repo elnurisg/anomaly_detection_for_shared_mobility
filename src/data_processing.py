@@ -16,9 +16,9 @@ from shapely.geometry import LineString
 # Select relevant features
 features = ['tripduration', 'distance', 'user_type_encoded', 'speed',
                     'temp', 'wspd', 'prcp', 'coco', 
-                    'start_hour', 'start_dayofweek', 'start_month', 
-                    'end_hour', 'end_dayofweek', 'end_month',
-                    'special_day',
+                    'start_hour', 'start_dayofweek', 'start_month', 'start_day',
+                    'end_hour', 'end_dayofweek', 'end_month', 'end_day',
+                    'special_day', 'start_is_weekend', 'end_is_weekend',
                     'start_nearby_transit_stops', 'end_nearby_transit_stops',
                     'start_neighborhood', 'end_neighborhood',
                     'route_area', 'route',
@@ -42,7 +42,8 @@ def prepare_station_data(file_path):
         'start station id', 'start station name', 'start_neighborhood', 'start_hour',
         'start_dayofweek', 'start_month', 'special_day', 'tripduration', 'distance',
         'speed', 'user_type_encoded', 'temp', 'prcp', 'wspd', 'coco',
-        'start_nearby_transit_stops', 'start_geometry'
+        'start_nearby_transit_stops', 'start_geometry',
+        'start_day', 'start_is_weekend'
     ]].copy()
 
     start_data.rename(columns={
@@ -51,6 +52,8 @@ def prepare_station_data(file_path):
         'start_neighborhood': 'neighborhood',
         'start_hour': 'hour',
         'start_dayofweek': 'dayofweek',
+        'start_day': 'day',
+        'start_is_weekend': 'is_weekend',
         'start_month': 'month',
         'start_nearby_transit_stops': 'nearby_transit_stops',
         'start_geometry': 'geometry'
@@ -62,7 +65,8 @@ def prepare_station_data(file_path):
         'end station id', 'end station name', 'end_neighborhood', 'end_hour',
         'end_dayofweek', 'end_month', 'special_day', 'tripduration', 'distance',
         'speed', 'user_type_encoded', 'temp', 'prcp', 'wspd', 'coco',
-        'end_nearby_transit_stops', 'end_geometry'
+        'end_nearby_transit_stops', 'end_geometry',
+        'end_day', 'end_is_weekend'
     ]].copy()
 
     end_data.rename(columns={
@@ -71,6 +75,8 @@ def prepare_station_data(file_path):
         'end_neighborhood': 'neighborhood',
         'end_hour': 'hour',
         'end_dayofweek': 'dayofweek',
+        'end_day': 'day',
+        'end_is_weekend': 'is_weekend',
         'end_month': 'month',
         'end_nearby_transit_stops': 'nearby_transit_stops',
         'end_geometry': 'geometry'
@@ -96,14 +102,14 @@ def extract_station_metadata(data):
     """
     Extracts station-specific metadata, ensuring nearby_transit_stops is constant per station.
     """
-    station_metadata = data[['station_id', 'station_name', 'neighborhood', 'geometry', 'nearby_transit_stops']] \
+    station_metadata = data[['station_id', 'station_name', 'neighborhood', 'geometry', 'nearby_transit_stops', 'dayofweek', 'is_weekend']] \
                         .drop_duplicates(subset=['station_id'])
     return station_metadata
 
 
 def aggregate_station_time_metrics(data):
     """
-    Groups the data by station_id, hour, dayofweek, month, and is_start,
+    Groups the data by station_id, hour, day, month, and is_start,
     and computes aggregated metrics (excluding station-specific columns).
     """
     agg_functions = {
@@ -118,7 +124,7 @@ def aggregate_station_time_metrics(data):
     }
 
     aggregated = data.groupby(
-        ['station_id', 'hour', 'dayofweek', 'month', 'is_start']
+        ['station_id', 'hour', 'day', 'month', 'is_start']
     ).agg(agg_functions).reset_index()
 
     # Flatten column names
@@ -163,7 +169,7 @@ def bike_trip_process_data_and_save(city_name = 'boston', start = datetime(2023,
 
     if scaling:   bike_weather_data = scale_data(bike_weather_data)
     if pca:       bike_weather_data = apply_pca(bike_weather_data)
-    bike_weather_data.to_parquet("data/boston/bike_trip_focused_data.parquet")
+    bike_weather_data.to_parquet("../data/boston/bike_trip_focused_data.parquet")
 
     print("bike trip focused data saved successfully as Parquet!")
     return bike_weather_data
@@ -217,11 +223,15 @@ def bike_trip_feature_engineering(bike_weather_data):
 def date_related_features(bike_weather_data):
     bike_weather_data['start_hour'] = bike_weather_data['starttime'].dt.hour
     bike_weather_data['start_dayofweek'] = bike_weather_data['starttime'].dt.dayofweek
+    bike_weather_data['start_day'] = bike_weather_data['starttime'].dt.day
     bike_weather_data['start_month'] = bike_weather_data['starttime'].dt.month
+    bike_weather_data['start_is_weekend'] = bike_weather_data['start_dayofweek'].apply(lambda x: 1 if x >= 5 else 0)
 
     bike_weather_data['end_hour'] = pd.to_datetime(bike_weather_data['stoptime']).dt.hour
     bike_weather_data['end_dayofweek'] = pd.to_datetime(bike_weather_data['stoptime']).dt.dayofweek
+    bike_weather_data['end_day'] = pd.to_datetime(bike_weather_data['stoptime']).dt.day
     bike_weather_data['end_month'] = pd.to_datetime(bike_weather_data['stoptime']).dt.month
+    bike_weather_data['end_is_weekend'] = bike_weather_data['end_dayofweek'].apply(lambda x: 1 if x >= 5 else 0)
 
     return bike_weather_data
 
